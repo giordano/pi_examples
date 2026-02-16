@@ -1,9 +1,9 @@
 #!/usr/bin/env julia
 
-# Make sure we have all the CUDA gubbins set up.
-using Pkg
-Pkg.activate(".")
-Pkg.instantiate()
+# # Make sure we have all the CUDA gubbins set up.
+# using Pkg
+# Pkg.activate(".")
+# Pkg.instantiate()
 using CUDA
 
 # Actual CUDA kernel.
@@ -37,9 +37,22 @@ function picalc(blocks, threads_per_block, numsteps)
     println("  ", numsteps, " slices")
     println("  ", threads_per_block, " CUDA threads(s)")
 
+    dev = first(CUDA.NVML.devices())
+    energy_start = CUDA.NVML.energy_consumption(dev)
     start = time()
     mypi = _picalc(blocks, threads_per_block, numsteps)
     elapsed = time() - start
+    energy_end = CUDA.NVML.energy_consumption(dev)
+
+    # Convert energy usage from Joule to Watt-Hour
+    energy_wh = (energy_end - energy_start) / 3600
+    json = """
+    {
+      "energy": $(energy_wh),
+      "time": $(elapsed)
+    }
+    """
+    write("energy-time.json", json)
 
     println("Obtained value of PI: ", mypi)
     println("Time taken: ", round(elapsed, digits=3), " seconds")
