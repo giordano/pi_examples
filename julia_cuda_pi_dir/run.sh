@@ -1,5 +1,7 @@
 #!/bin/bash
 
+julia --project -e 'using Pkg; Pkg.instantiate()'
+
 set -euo pipefail
 
 FEW_FREQUENCIES=(1005 1110 1200 1305 1410)
