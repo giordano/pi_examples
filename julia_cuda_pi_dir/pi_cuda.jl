@@ -7,23 +7,23 @@
 using CUDA
 
 # Actual CUDA kernel.
-function pichunk!(result, step, work_per_thread)
+function pichunk!(result::AbstractVector{FT}, step, work_per_thread) where {FT}
     rank = (blockIdx().x - 1) * (blockDim().x) + (threadIdx().x - 1)
     lower = rank * work_per_thread
     upper = lower + work_per_thread - 1
     for i in lower:upper
-        x = (i + 0.5) * step
-        result[rank+1] += 4.0 / (1.0 + x * x)
+        x = (i + one(FT) / 2) * step
+        result[rank+1] += 4 / (one(FT) + x * x)
     end
     return
 end
 
 # Sort out CUDA thread setup.
-function _picalc(blocks, threads_per_block, numsteps)
-    step = 1 / numsteps
+function _picalc(blocks, threads_per_block, numsteps; FT=Float64)
+    step = one(FT) / numsteps
     tot_threads = blocks * threads_per_block
     work_per_thread = numsteps ÷ tot_threads
-    result = CUDA.zeros(Float64, tot_threads)
+    result = CUDA.zeros(FT, tot_threads)
     @cuda blocks=(blocks) threads=(threads_per_block) pichunk!(result, step, work_per_thread)
     synchronize()
     s = sum(result) * step
@@ -31,16 +31,17 @@ function _picalc(blocks, threads_per_block, numsteps)
 end
 
 # Run the benchmark.
-function picalc(blocks, threads_per_block, numsteps)
+function picalc(blocks, threads_per_block, numsteps; FT=Float64)
 
     println("Calculating PI using:")
     println("  ", numsteps, " slices")
     println("  ", threads_per_block, " CUDA threads(s)")
+    println("  ", FT, " type")
 
     dev = first(CUDA.NVML.devices())
     energy_start = CUDA.NVML.energy_consumption(dev)
     start = time()
-    mypi = _picalc(blocks, threads_per_block, numsteps)
+    mypi = _picalc(blocks, threads_per_block, numsteps; FT)
     elapsed = time() - start
     energy_end = CUDA.NVML.energy_consumption(dev)
 
@@ -71,6 +72,12 @@ else
   512
 end
 
+FT = if length(ARGS) > 2
+    getfield(Base, Meta.parse(ARGS[3]))
+else
+    Float64
+end
+
 # Warm things up
 print("  Warming up...")
 warms = time()
@@ -78,7 +85,7 @@ let
     blocks = 256
     threads_per_block = 256
     numsteps = blocks * threads_per_block * 2
-    _picalc(blocks, threads_per_block, numsteps)
+    _picalc(blocks, threads_per_block, numsteps; FT)
     nothing
 end
 warmt = time() - warms
@@ -86,4 +93,4 @@ println("done. [", round(warmt, digits=3), "s]\n")
 
 # Run the full example
 blocks = 4096
-picalc(blocks, threads, numsteps)
+picalc(blocks, threads, numsteps; FT)
